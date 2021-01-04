@@ -39,7 +39,10 @@ queue_t* q_new()
 void q_free(queue_t* q)
 {
   /* Remember to free the queue structue and list elements */
-  if (q == NULL || q->head == NULL) {
+  if (q == NULL) {
+    return;
+  }
+  if (q->head == NULL) {
     free(q);
     return;
   }
@@ -73,11 +76,11 @@ bool q_insert_head(queue_t* q, int v)
   }
   ele->value = v;
   ele->next = NULL;
-  if(q->head == NULL){
+  if (q->head == NULL) {
     q->head = ele;
     q->tail = ele;
   }
-  else{
+  else {
     ele->next = q->head;
     q->head = ele;
   }
@@ -103,11 +106,11 @@ bool q_insert_tail(queue_t* q, int v)
   }
   ele->value = v;
   ele->next = NULL;
-  if(q->head == NULL){
+  if (q->head == NULL) {
     q->head = ele;
     q->tail = ele;
   }
-  else{
+  else {
     q->tail->next = ele;
     q->tail = ele;
   }
@@ -124,6 +127,17 @@ bool q_insert_tail(queue_t* q, int v)
 */
 bool q_remove_head(queue_t* q, int* vp)
 {
+  if (q == NULL || q->head == NULL) {
+    return false;
+  }
+  list_ele_t* rem = q->head;
+  q->head = q->head->next;
+  int i = rem->value;
+  free(rem);
+  if (vp != NULL) {
+    *vp = i;
+  }
+  q->size--;
   return true;
 }
 
@@ -134,6 +148,9 @@ bool q_remove_head(queue_t* q, int* vp)
 int q_size(queue_t* q)
 {
   /* Remember: It should operate in O(1) time */
+  if (q == NULL || q->head == NULL) {
+    return 0;
+  }
   return q->size;
 }
 
@@ -146,4 +163,21 @@ int q_size(queue_t* q)
  */
 void q_reverse(queue_t* q)
 {
+  if (q == NULL || q->head == NULL || q->head->next == NULL) {
+    return;
+  }
+  list_ele_t* tmp;
+  list_ele_t* prev = q->head;
+  list_ele_t* curr = q->head->next;
+  while (curr != NULL) {
+    tmp = curr->next;
+    curr->next = prev;
+    prev = curr;
+    curr = tmp;
+  }
+  q->head->next = NULL;
+  tmp = q->head;
+  q->head = q->tail;
+  q->tail = tmp;
+  return;
 }
