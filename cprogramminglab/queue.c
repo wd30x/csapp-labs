@@ -63,6 +63,25 @@ bool q_insert_head(queue_t* q, int v)
 {
   /* What should you do if the q is NULL? */
   /* What if malloc returned NULL? */
+  if (q == NULL) {
+    return false;
+  }
+  //1 or more elements
+  list_ele_t* ele = malloc(sizeof(list_ele_t));
+  if (ele == NULL) {
+    return false;
+  }
+  ele->value = v;
+  ele->next = NULL;
+  if(q->head == NULL){
+    q->head = ele;
+    q->tail = ele;
+  }
+  else{
+    ele->next = q->head;
+    q->head = ele;
+  }
+  q->size++;
   return true;
 }
 
@@ -74,7 +93,26 @@ bool q_insert_head(queue_t* q, int v)
 bool q_insert_tail(queue_t* q, int v)
 {
   /* Remember: It should operate in O(1) time */
-  return false;
+  if (q == NULL) {
+    return false;
+  }
+  //1 or more elements
+  list_ele_t* ele = malloc(sizeof(list_ele_t));
+  if (ele == NULL) {
+    return false;
+  }
+  ele->value = v;
+  ele->next = NULL;
+  if(q->head == NULL){
+    q->head = ele;
+    q->tail = ele;
+  }
+  else{
+    q->tail->next = ele;
+    q->tail = ele;
+  }
+  q->size++;
+  return true;
 }
 
 /*
