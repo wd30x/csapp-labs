@@ -209,11 +209,27 @@ int negate(int x) { return (~x) + 1; }
  *   Rating: 3
  */
 int isAsciiDigit(int x) {
-  // int y = x >> 4;
-  // int z = 3;
-  // y = (~y) + z;
-  // return !(~y);
-  
+  int a = 0x30;
+  int b;
+  int c;
+  int d;
+  int e;
+  int f;
+  int y = x >> 4;
+  y = ~y;
+  y = y + 0x3;
+  y = ~y;  // y = 0 if x is from 0x30 to 0x3F
+
+  b = (~a) + 1;  //-0x30
+  c = b + x;     // 0x0 <= c <= 0x9 if x is from 0x30 to 0x39
+  d = c >> 3;
+  e = c >> 2;
+  f = c >> 1;
+
+  f = e | f;
+  f = f & d;
+
+  return !(f + y);
 }
 /*
  * conditional - same as x ? y : z
@@ -222,7 +238,15 @@ int isAsciiDigit(int x) {
  *   Max ops: 16
  *   Rating: 3
  */
-int conditional(int x, int y, int z) { return 2; }
+int conditional(int x, int y, int z) {
+  int x1;
+  int x2;
+  x1 = (!x) + (~1) + 1;  // 1111 or 0000
+  x2 = !(!x);            // 0001 or 0000
+  y = y & x1;
+  z = z | x1;
+  return y + z + x2;
+}
 /*
  * isLessOrEqual - if x <= y  then return 1, else return 0
  *   Example: isLessOrEqual(4,5) = 1.
@@ -230,7 +254,9 @@ int conditional(int x, int y, int z) { return 2; }
  *   Max ops: 24
  *   Rating: 3
  */
-int isLessOrEqual(int x, int y) { return 2; }
+int isLessOrEqual(int x, int y) {
+  
+}
 // 4
 /*
  * logicalNeg - implement the ! operator, using all of
