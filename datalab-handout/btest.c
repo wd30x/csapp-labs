@@ -299,7 +299,6 @@ static int test_function(test_ptr t) {
     int arg_test_range[3]; /* test range for each argument */
     int i, a1, a2, a3;        
     int errors = 0;
-
     /* These are the test values for each arg. Declared with the
        static attribute so that the array will be allocated in bss
        rather than the stack */

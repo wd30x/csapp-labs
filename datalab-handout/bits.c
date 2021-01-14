@@ -255,7 +255,7 @@ int conditional(int x, int y, int z) {
  *   Rating: 3
  */
 int isLessOrEqual(int x, int y) {
-  int xs = x >> 31;    //sign
+  int xs = x >> 31;  // sign
   int ys = y >> 31;
   int d = ys + (~xs) + 1;
   int c = (d << 31) >> 31;
@@ -291,7 +291,31 @@ int logicalNeg(int x) {
  *  Max ops: 90
  *  Rating: 4
  */
-int howManyBits(int x) { return 0; }
+int howManyBits(int x) {
+  //这题写不来，看别人的二分法^^
+  // https://www.codenong.com/cs106879358/
+  int s16, s8, s4, s2, s1;
+  int sign = (x >> 31) & 1;  // 0 = +, 1 = -
+  int mask = ~sign + 1;      // minus
+  x = (mask & ~x) | (~mask & x);
+
+  s16 = (!!(x >> 16)) << 4;
+  x = x >> s16;
+
+  s8 = (!!(x >> 8)) << 3;
+  x = x >> s8;
+
+  s4 = (!!(x >> 4)) << 2;
+  x = x >> s4;
+
+  s2 = (!!(x >> 2)) << 1;
+  x = x >> s2;
+
+  s1 = (!!(x >> 1)) << 0;
+  x = x >> s1;
+
+  return s16 + s8 + s4 + s2 + s1 + x + 1;
+}
 // float
 /*
  * floatScale2 - Return bit-level equivalent of expression 2*f for
@@ -304,7 +328,21 @@ int howManyBits(int x) { return 0; }
  *   Max ops: 30
  *   Rating: 4
  */
-unsigned floatScale2(unsigned uf) { return 2; }
+unsigned floatScale2(unsigned uf) {
+  unsigned sign = 0x80000000 & uf;
+  unsigned exp = 0x7F800000 & uf;
+  unsigned frac = 0x007FFFFF & uf;
+
+  // Denormalized case: exp = 000…0
+  if (exp == 0) {
+    frac = frac << 1;
+  }
+  // Normalized case: exp ≠ 000…0 and exp ≠ 111…1
+  if ((exp != 0) && (exp != 0x7F800000)) {
+    exp = exp + 0x00800000;
+  }
+  return sign | exp | frac;
+}
 /*
  * floatFloat2Int - Return bit-level equivalent of expression (int) f
  *   for floating point argument f.
@@ -317,7 +355,30 @@ unsigned floatScale2(unsigned uf) { return 2; }
  *   Max ops: 30
  *   Rating: 4
  */
-int floatFloat2Int(unsigned uf) { return 2; }
+int floatFloat2Int(unsigned uf) {
+  unsigned sign = (0x80000000 & uf) >> 31;
+  unsigned exp = 0x7F800000 & uf;
+  unsigned frac = (0x007FFFFF & uf) << 7;
+  int E = (exp >> 23) - 127;
+
+  // Special:  exp = 111…1 or E > 30
+  if (exp == 0x7F800000 || E > 30) {
+    return 0x80000000u;
+  }
+  // Denormalized case: exp = 000…0 or E < 0
+  if (exp == 0 || E < 0) {
+    return 0;
+  }
+  // Normalized case: exp ≠ 000…0 and exp ≠ 111…1
+  if ((exp != 0) && (exp != 0x7F800000)) {
+    frac = frac | 0x40000000;
+    frac = frac >> (30 - E);
+  }
+  if (sign) {
+    frac = -frac;
+  }
+  return frac;
+}
 /*
  * floatPower2 - Return bit-level equivalent of the expression 2.0^x
  *   (2.0 raised to the power x) for any 32-bit integer x.
@@ -331,4 +392,9 @@ int floatFloat2Int(unsigned uf) { return 2; }
  *   Max ops: 30
  *   Rating: 4
  */
-unsigned floatPower2(int x) { return 2; }
+unsigned floatPower2(int x) {
+  //看了好久才发现2.0^x就是2^E,人傻了
+  x = x + 127;  //E = exp - Bias, Bias = 127, exp = E + 127 = x + 127
+  if (x < 0) return 0;  //exp的范围是[1,254]
+  return x < 0xff ? x << 23 : (0xff << 23);
+}
