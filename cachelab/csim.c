@@ -76,7 +76,7 @@ main(int argc, char *argv[])
     fp = fopen(t, "r");
     while (fscanf(t, " %c %x,%d", &oper, &addr, &size) != EOF)
     {
-    }
+    } 
 
     printSummary(hit, miss, eviction);
     fclose(fp);
