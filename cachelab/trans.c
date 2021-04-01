@@ -1,4 +1,4 @@
-/* 
+/*
  * trans.c - Matrix transpose B = A^T
  *
  * Each transpose function must have a prototype of the form:
@@ -6,44 +6,93 @@
  *
  * A transpose function is evaluated by counting the number of misses
  * on a 1KB direct mapped cache with a block size of 32 bytes.
- */ 
+ */
 #include <stdio.h>
+
 #include "cachelab.h"
 
 int is_transpose(int M, int N, int A[N][M], int B[M][N]);
 
-/* 
+/*
  * transpose_submit - This is the solution transpose function that you
  *     will be graded on for Part B of the assignment. Do not change
  *     the description string "Transpose submission", as the driver
  *     searches for that string to identify the transpose function to
- *     be graded. 
+ *     be graded.
  */
 char transpose_submit_desc[] = "Transpose submission";
-void transpose_submit(int M, int N, int A[N][M], int B[M][N])
-{
+void transpose_submit(int M, int N, int A[N][M], int B[M][N]) {
+  int i, k, j, l, a0, a1, a2, a3, a4, a5, a6, a7;
+
+  if (M == 32 && N == 32) {
+    for (k = 0; k < 4; k++) {
+      for (l = 0; l < 4; l++) {
+        for (i = 8 * k; i < 8 * k + 8; i++) {
+          a0 = A[i][8 * l];
+          a1 = A[i][8 * l + 1];
+          a2 = A[i][8 * l + 2];
+          a3 = A[i][8 * l + 3];
+          a4 = A[i][8 * l + 4];
+          a5 = A[i][8 * l + 5];
+          a6 = A[i][8 * l + 6];
+          a7 = A[i][8 * l + 7];
+          B[8 * l][i] = a0;
+          B[8 * l + 1][i] = a1;
+          B[8 * l + 2][i] = a2;
+          B[8 * l + 3][i] = a3;
+          B[8 * l + 4][i] = a4;
+          B[8 * l + 5][i] = a5;
+          B[8 * l + 6][i] = a6;
+          B[8 * l + 7][i] = a7;
+        }
+      }
+    }
+  }
+
+  else if (M == 64 && N == 64) {
+    for (k = 0; k < 4; k++) {
+      for (l = 0; l < 4; l++) {
+        for (i = 16 * k; i < 16 * k + 16; i++) {
+          for (j = 16 * l; j < 16 * l + 16; j++) {
+            a0 = A[i][j];
+            B[j][i] = a0;
+          }
+        }
+      }
+    }
+  }
+
+  else if (M == 61 && N == 67) {
+    for (k = 0; k < 4; k++) {
+      for (l = 0; l < 4; l++) {
+        for (i = 17 * k; (i < 17 * k + 17) && (i < N); i++) {
+          for (j = 17 * l; (j < 17 * l + 17) && (j < M); j++) {
+            B[j][i] = A[i][j];
+          }
+        }
+      }
+    }
+  }
 }
 
-/* 
+/*
  * You can define additional transpose functions below. We've defined
- * a simple one below to help you get started. 
- */ 
+ * a simple one below to help you get started.
+ */
 
-/* 
+/*
  * trans - A simple baseline transpose function, not optimized for the cache.
  */
 char trans_desc[] = "Simple row-wise scan transpose";
-void trans(int M, int N, int A[N][M], int B[M][N])
-{
-    int i, j, tmp;
+void trans(int M, int N, int A[N][M], int B[M][N]) {
+  int i, j, tmp;
 
-    for (i = 0; i < N; i++) {
-        for (j = 0; j < M; j++) {
-            tmp = A[i][j];
-            B[j][i] = tmp;
-        }
-    }    
-
+  for (i = 0; i < N; i++) {
+    for (j = 0; j < M; j++) {
+      tmp = A[i][j];
+      B[j][i] = tmp;
+    }
+  }
 }
 
 /*
@@ -53,32 +102,28 @@ void trans(int M, int N, int A[N][M], int B[M][N])
  *     performance. This is a handy way to experiment with different
  *     transpose strategies.
  */
-void registerFunctions()
-{
-    /* Register your solution function */
-    registerTransFunction(transpose_submit, transpose_submit_desc); 
+void registerFunctions() {
+  /* Register your solution function */
+  registerTransFunction(transpose_submit, transpose_submit_desc);
 
-    /* Register any additional transpose functions */
-    registerTransFunction(trans, trans_desc); 
-
+  /* Register any additional transpose functions */
+  registerTransFunction(trans, trans_desc);
 }
 
-/* 
+/*
  * is_transpose - This helper function checks if B is the transpose of
  *     A. You can check the correctness of your transpose by calling
  *     it before returning from the transpose function.
  */
-int is_transpose(int M, int N, int A[N][M], int B[M][N])
-{
-    int i, j;
+int is_transpose(int M, int N, int A[N][M], int B[M][N]) {
+  int i, j;
 
-    for (i = 0; i < N; i++) {
-        for (j = 0; j < M; ++j) {
-            if (A[i][j] != B[j][i]) {
-                return 0;
-            }
-        }
+  for (i = 0; i < N; i++) {
+    for (j = 0; j < M; ++j) {
+      if (A[i][j] != B[j][i]) {
+        return 0;
+      }
     }
-    return 1;
+  }
+  return 1;
 }
-
