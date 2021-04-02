@@ -47,22 +47,67 @@ void transpose_submit(int M, int N, int A[N][M], int B[M][N]) {
         }
       }
     }
-  }
+  } else if (M == 64 && N == 64) {
+    //这题有点难，参考了网上的大佬做法^^
+    //
+    for (i = 0; i < 64; i += 8) {
+      for (j = 0; j < 64; j += 8) {
+        // transpose top A (4x8) to top B (4x8)
+        for (k = i; k < i + 4; ++k) {
+          a1 = A[k][j];
+          a2 = A[k][j + 1];
+          a3 = A[k][j + 2];
+          a4 = A[k][j + 3];
+          a5 = A[k][j + 4];
+          a6 = A[k][j + 5];
+          a7 = A[k][j + 6];
+          a0 = A[k][j + 7];
 
-  else if (M == 64 && N == 64) {
-    for (k = 0; k < 4; k++) {
-      for (l = 0; l < 4; l++) {
-        for (i = 16 * k; i < 16 * k + 16; i++) {
-          for (j = 16 * l; j < 16 * l + 16; j++) {
-            a0 = A[i][j];
-            B[j][i] = a0;
-          }
+          B[j][k] = a1;
+          B[j][k + 4] = a5;
+          B[j + 1][k] = a2;
+          B[j + 1][k + 4] = a6;
+          B[j + 2][k] = a3;
+          B[j + 2][k + 4] = a7;
+          B[j + 3][k] = a4;
+          B[j + 3][k + 4] = a0;
+        }
+        // transpose bottom left A to top right B, move top right B to bottom
+        // left B
+        for (k = j; k < j + 4; ++k) {
+          a1 = B[k][i + 4];
+          a2 = B[k][i + 5];
+          a3 = B[k][i + 6];
+          a4 = B[k][i + 7];
+          a5 = A[i + 4][k];
+          a6 = A[i + 5][k];
+          a7 = A[i + 6][k];
+          a0 = A[i + 7][k];
+
+          B[k][i + 4] = a5;
+          B[k][i + 5] = a6;
+          B[k][i + 6] = a7;
+          B[k][i + 7] = a0;
+          B[k + 4][i] = a1;
+          B[k + 4][i + 1] = a2;
+          B[k + 4][i + 2] = a3;
+          B[k + 4][i + 3] = a4;
+        }
+        // transpose bottom right part from A to B
+        for (k = j + 4; k < j + 8; ++k) {
+          a1 = A[i + 4][k];
+          a2 = A[i + 5][k];
+          a3 = A[i + 6][k];
+          a4 = A[i + 7][k];
+
+          B[k][i + 4] = a1;
+          B[k][i + 5] = a2;
+          B[k][i + 6] = a3;
+          B[k][i + 7] = a4;
         }
       }
     }
-  }
-
-  else if (M == 61 && N == 67) {
+  } else if (M == 61 && N == 67) {
     for (k = 0; k < 4; k++) {
       for (l = 0; l < 4; l++) {
         for (i = 17 * k; (i < 17 * k + 17) && (i < N); i++) {
