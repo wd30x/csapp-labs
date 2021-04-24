@@ -184,12 +184,12 @@ void eval(char *cmdline) {
       sigprocmask(SIG_SETMASK, &prev_mask, NULL);
       setpgid(0, 0);
       if (execve(argv[0], argv, environ) < 0) {
-        printf("%s: Command not found./n", argv[0]);
+        printf("%s: Command not found\n", argv[0]);
         exit(0);
       }
     }
     // parent process
-    sigprocmask(SIG_BLOCK, &mask_all, NULL);
+    // sigprocmask(SIG_BLOCK, &mask_all, NULL);
     // background job
     if (bg) {
       addjob(jobs, pid, BG, cmdline);
@@ -272,6 +272,9 @@ int builtin_cmd(char **argv) {
     return 1;
   } else if (!strcmp(argv[0], "&")) {
     return 1;
+  } else if (!strcmp(argv[0], "bg") || !strcmp(argv[0], "fg")) {
+    do_bgfg(argv);
+    return 1;
   }
   return 0; /* not a builtin command */
 }
@@ -279,14 +282,45 @@ int builtin_cmd(char **argv) {
 /*
  * do_bgfg - Execute the builtin bg and fg commands
  */
-void do_bgfg(char **argv) { return; }
+void do_bgfg(char **argv) {
+  int jid, pid;
+  struct job_t *job = NULL;
+
+  if (argv[1] == NULL) {
+    printf("%s command requires PID or %%jobid argument\n", argv[0]);
+    return;
+  }
+  // jid
+  if (argv[1][0] == '%') {
+    if (sscanf(argv[1], "%%%d", &jid) > 0) {
+      job = getjobjid(jobs, jid);
+    }
+  } else {  // pid
+    if (sscanf(argv[1], "%d", &pid) > 0) {
+      job = getjobpid(jobs, pid);
+    }
+  }
+  if (job == NULL) {
+    printf("%s: No such job\n", argv[0]);
+    return;
+  }
+  kill(-(job->pid), SIGCONT);
+  if (!strcmp(argv[0], "bg")) {
+    job->state = BG;
+    printf("[%d] (%d) %s", job->jid, job->pid, job->cmdline);
+  } else if (!strcmp(argv[0], "fg")) {
+    job->state = FG;
+    waitfg(job->pid);
+  }
+  return;
+}
 
 /*
  * waitfg - Block until process pid is no longer the foreground process
  */
 void waitfg(pid_t pid) {
   sigset_t empty;
-  sigemptyset(&empty); 
+  sigemptyset(&empty);
   while (fgpid(jobs) != 0) sigsuspend(&empty);
   return;
 }
@@ -334,7 +368,7 @@ void sigchld_handler(int sig) {
 /*
  * sigint_handler - The kernel sends a SIGINT to the shell whenver the
  *    user types ctrl-c at the keyboard.  Catch it and send it along
- *    to the foreground job.    sigprocmask(SIG_SETMASK, &prev_mask, NULL);  //
+ *    to the foreground job.    sigprocmask(SIG_SETMASK, &prev_mask, NULL); //
  * unblock
  */
 void sigint_handler(int sig) {
