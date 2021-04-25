@@ -314,7 +314,7 @@ void do_bgfg(char **argv) {
       return;
     }
   }
-  kill(-(job->pid), SIGCONT);
+  kill(-(job->pid), SIGCONT);  // send cont signal
   if (!strcmp(argv[0], "bg")) {
     job->state = BG;
     printf("[%d] (%d) %s", job->jid, job->pid, job->cmdline);
