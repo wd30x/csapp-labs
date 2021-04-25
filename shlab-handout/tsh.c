@@ -294,15 +294,25 @@ void do_bgfg(char **argv) {
   if (argv[1][0] == '%') {
     if (sscanf(argv[1], "%%%d", &jid) > 0) {
       job = getjobjid(jobs, jid);
+    } else {
+      printf("%s: argument must be a PID or %%jobid\n", argv[0]);
+      return;
+    }
+    if (job == NULL) {
+      printf("%s: No such job\n", argv[1]);
+      return;
     }
   } else {  // pid
     if (sscanf(argv[1], "%d", &pid) > 0) {
       job = getjobpid(jobs, pid);
+    } else {
+      printf("%s: argument must be a PID or %%jobid\n", argv[0]);
+      return;
     }
-  }
-  if (job == NULL) {
-    printf("%s: No such job\n", argv[0]);
-    return;
+    if (job == NULL) {
+      printf("(%s): No such process\n", argv[1]);
+      return;
+    }
   }
   kill(-(job->pid), SIGCONT);
   if (!strcmp(argv[0], "bg")) {
