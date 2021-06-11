@@ -62,6 +62,7 @@ team_t team = {
 #define PREV_BLKP(bp) ((char *)(bp)-GET_SIZE(((char *)(bp)-DSIZE)))
 
 static char *heap_listp;
+static char *iter;
 static void *extend_heap(size_t words);
 static void *coalesce(void *bp);
 static void place(void *bp, size_t asize);
@@ -80,6 +81,7 @@ int mm_init(void) {
   PUT(heap_listp + (2 * WSIZE), PACK(DSIZE, 1)); /* Prologue footer */
   PUT(heap_listp + (3 * WSIZE), PACK(0, 1));     /* Epilogue header */
   heap_listp += (2 * WSIZE);
+  iter = heap_listp;
 
   /* Extend the empty heap with a free block of CHUNKSIZE bytes */
   if (extend_heap(CHUNKSIZE / WSIZE) == NULL) {
@@ -138,6 +140,7 @@ void *mm_malloc(size_t size) {
   return bp;
 }
 
+/* allocator places the requested block and optionally splits the excess*/
 static void place(void *bp, size_t asize) {
   size_t size = GET_SIZE(HDRP(bp));
   size_t remain = size - asize;
@@ -153,9 +156,9 @@ static void place(void *bp, size_t asize) {
   }
 }
 
-/*first fit*/
+/*Next fit*/
 static void *find_fit(size_t asize) {
-  void *bp = NEXT_BLKP(heap_listp);
+  void *bp = iter;
   size_t size = GET_SIZE(HDRP(bp));
   size_t alloc = GET_ALLOC(HDRP(bp));
   while (size < asize || alloc) {
@@ -163,9 +166,11 @@ static void *find_fit(size_t asize) {
     size = GET_SIZE(HDRP(bp));
     alloc = GET_ALLOC(HDRP(bp));
     if (!size && alloc) {
+      iter = heap_listp;
       return NULL;
     }
   }
+  iter = bp;
   return bp;
 }
 
@@ -180,6 +185,7 @@ void mm_free(void *bp) {
   coalesce(bp);
 }
 
+/* coalesce depends on the case*/
 static void *coalesce(void *bp) {
   size_t prev_alloc = GET_ALLOC(FTRP(PREV_BLKP(bp)));
   size_t next_alloc = GET_ALLOC(HDRP(NEXT_BLKP(bp)));
@@ -202,6 +208,7 @@ static void *coalesce(void *bp) {
     PUT(FTRP(NEXT_BLKP(bp)), PACK(size, 0));
     bp = PREV_BLKP(bp);
   }
+  iter = bp;
   return bp;
 }
 
@@ -222,4 +229,5 @@ void *mm_realloc(void *ptr, size_t size) {
   return newptr;
 }
 
+/* Heap Consistency Checker */
 int mm_check(void) { return 0; }
