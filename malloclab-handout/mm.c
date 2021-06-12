@@ -36,9 +36,11 @@ team_t team = {
     ""};
 
 /* Basic constants and macros */
-#define WSIZE 4        /* Word and header/footer size (bytes) */
-#define DSIZE 8        /* Double word size (bytes) */
-#define CHUNKSIZE 4800 /* Extend heap by this amount (bytes) */
+#define WSIZE 4             /* Word and header/footer size (bytes) */
+#define DSIZE 8             /* Double word size (bytes) */
+#define CHUNKSIZE 4800      /* Extend heap by this amount (bytes) */
+#define MINSIZE (3 * DSIZE) /* Minimum size block*/
+#define MAXSIZE (1 << 20)   /* Maximum size block*/
 
 #define MAX(x, y) ((x) > (y) ? (x) : (y))
 
@@ -64,6 +66,7 @@ team_t team = {
 #define NEXT_BLKP(bp) ((char *)(bp) + GET_SIZE(((char *)(bp)-WSIZE)))
 #define PREV_BLKP(bp) ((char *)(bp)-GET_SIZE(((char *)(bp)-DSIZE)))
 
+static char *root;
 static char *head;
 static char *tail;
 static void *extend_heap(size_t words);
@@ -73,43 +76,64 @@ static void *find_fit(size_t asize);
 static int mm_check(void);
 static void inser(void *bp);
 static void remov(void *bp);
-static int count = 0;
+static void insertAppr(void *bp);
+static void *check_list(size_t asize);
 
 /*
  * mm_init - initialize the malloc package.
  */
 int mm_init(void) {
-  /* Create the initial empty heap */
-  if ((head = mem_sbrk(8 * WSIZE + 4 * WSIZE)) == (void *)-1) {
+  size_t size = 2 * DSIZE;
+  if ((head = mem_sbrk(0)) == (void *)-1) {
     return -1;
   }
-  size_t size = 2 * DSIZE;
-  head = (char *)head + WSIZE;
-  tail = head + 4 * WSIZE;
-  PUT(HDRP(head), PACK(size, 1)); /* head header */
-  PUT(PRED(head), tail);          /* head pred */
-  PUT(SUCC(head), tail);          /* head succ */
-  PUT(FTRP(head), PACK(size, 1)); /* head footer */
-
-  PUT(HDRP(tail), PACK(size, 1)); /* tail header */
-  PUT(PRED(tail), head);          /* tail pred */
-  PUT(SUCC(tail), head);          /* tail succ */
-  PUT(FTRP(tail), PACK(size, 1)); /* tail footer */
-
-  char *prol = (char *)tail + 3 * WSIZE;
-  PUT(prol, 0);                            /* Alignment padding */
-  PUT(prol + (1 * WSIZE), PACK(DSIZE, 1)); /* Prologue header */
-  PUT(prol + (2 * WSIZE), PACK(DSIZE, 1)); /* Prologue footer */
-  PUT(prol + (3 * WSIZE), PACK(0, 1));     /* Epilogue header */
-
-  /* Extend the empty heap with a free block of CHUNKSIZE bytes */
-  if (extend_heap(CHUNKSIZE / WSIZE) == NULL) {
-    return -1;
+  root = head + WSIZE;
+  for (size_t i = MINSIZE; i < 1024; i += DSIZE) {
+    /* Create the initial empty heap */
+    if ((head = mem_sbrk(12 * WSIZE)) == (void *)-1) {
+      return -1;
+    }
+    head = head + WSIZE;
+    tail = head + 4 * WSIZE;
+    PUT(HDRP(head), PACK(size, 1)); /* head header */
+    PUT(PRED(head), tail);          /* head pred */
+    PUT(SUCC(head), tail);          /* head succ */
+    PUT(FTRP(head), PACK(size, 1)); /* head footer */
+    PUT(HDRP(tail), PACK(size, 1)); /* tail header */
+    PUT(PRED(tail), head);          /* tail pred */
+    PUT(SUCC(tail), head);          /* tail succ */
+    PUT(FTRP(tail), PACK(size, 1)); /* tail footer */
+    char *prol = (char *)tail + 3 * WSIZE;
+    PUT(prol, 0);                            /* Alignment padding */
+    PUT(prol + (1 * WSIZE), PACK(DSIZE, 1)); /* Prologue header */
+    PUT(prol + (2 * WSIZE), PACK(DSIZE, 1)); /* Prologue footer */
+    PUT(prol + (3 * WSIZE), PACK(0, 1));     /* Epilogue header */
+  }
+  for (size_t i = 1024; i <= MAXSIZE; i *= 2) {
+    /* Create the initial empty heap */
+    if ((head = mem_sbrk(12 * WSIZE)) == (void *)-1) {
+      return -1;
+    }
+    head = head + WSIZE;
+    tail = head + 4 * WSIZE;
+    PUT(HDRP(head), PACK(size, 1)); /* head header */
+    PUT(PRED(head), tail);          /* head pred */
+    PUT(SUCC(head), tail);          /* head succ */
+    PUT(FTRP(head), PACK(size, 1)); /* head footer */
+    PUT(HDRP(tail), PACK(size, 1)); /* tail header */
+    PUT(PRED(tail), head);          /* tail pred */
+    PUT(SUCC(tail), head);          /* tail succ */
+    PUT(FTRP(tail), PACK(size, 1)); /* tail footer */
+    char *prol = (char *)tail + 3 * WSIZE;
+    PUT(prol, 0);                            /* Alignment padding */
+    PUT(prol + (1 * WSIZE), PACK(DSIZE, 1)); /* Prologue header */
+    PUT(prol + (2 * WSIZE), PACK(DSIZE, 1)); /* Prologue footer */
+    PUT(prol + (3 * WSIZE), PACK(0, 1));     /* Epilogue header */
   }
   return 0;
 }
 
-/* Extends the heap with a new free block. */
+/* TODO: Extends the heap with a new free block. */
 static void *extend_heap(size_t words) {
   char *bp;
   size_t size;
@@ -124,10 +148,9 @@ static void *extend_heap(size_t words) {
   PUT(HDRP(bp), PACK(size, 0));         /* Free block header */
   PUT(FTRP(bp), PACK(size, 0));         /* Free block footer */
   PUT(HDRP(NEXT_BLKP(bp)), PACK(0, 1)); /* New epilogue header */
-  inser(bp);
 
   /* Coalesce if the previous block was free */
-  return bp;
+  return coalesce(bp);
 }
 
 /*
@@ -143,7 +166,7 @@ void *mm_malloc(size_t size) {
 
   /* Adjust block size to include overhead and alignment reqs. */
   if (size <= DSIZE)
-    asize = 3 * DSIZE;
+    asize = MINSIZE;
   else
     asize = DSIZE * ((size + (2 * DSIZE) + (DSIZE - 1)) / DSIZE);
 
@@ -172,10 +195,9 @@ static void place(void *bp, size_t asize) {
     bp = NEXT_BLKP(bp);
     PUT(HDRP(bp), PACK(remain, 0));
     PUT(FTRP(bp), PACK(remain, 0));
-    PUT(SUCC(pre), bp);
-    PUT(SUCC(bp), suc);
-    PUT(PRED(suc), bp);
-    PUT(PRED(bp), pre);
+    PUT(SUCC(pre), suc);
+    PUT(PRED(suc), pre);
+    insertAppr(bp);
   } else {
     PUT(HDRP(bp), PACK(size, 1));
     PUT(FTRP(bp), PACK(size, 1));
@@ -185,6 +207,31 @@ static void place(void *bp, size_t asize) {
 
 /* first fit */
 static void *find_fit(size_t asize) {
+  head = root;
+  tail = head + 4 * WSIZE;
+  char *bp;
+  for (size_t i = MINSIZE; i < 1024; i += DSIZE) {
+    if (asize <= i) {
+      if ((bp = check_list(asize)) != NULL) {
+        return bp;
+      }
+    }
+    head += 12 * WSIZE;
+    tail = head + 4 * WSIZE;
+  }
+  for (size_t i = 1024; i <= MAXSIZE; i *= 2) {
+    if (asize <= i) {
+      if ((bp = check_list(asize)) != NULL) {
+        return bp;
+      }
+    }
+    head += 12 * WSIZE;
+    tail = head + 4 * WSIZE;
+  }
+  return NULL;
+}
+
+static void *check_list(size_t asize) {
   char *bp = (char *)GET(SUCC((head)));
   size_t size = GET_SIZE(HDRP(bp));
   while (size < asize) {
@@ -206,6 +253,35 @@ static void inser(void *bp) {
   PUT(SUCC(bp), suc);
   PUT(PRED(suc), bp);
   PUT(PRED(bp), head);
+}
+
+/*
+ * insertAppr - insert the block to an appropriate free list.
+ */
+static void insertAppr(void *bp) {
+  head = root;
+  tail = head + 4 * WSIZE;
+  size_t size = GET_SIZE(HDRP(bp));
+  for (size_t i = MINSIZE; i < 1024; i += DSIZE) {
+    if (size <= i) {
+      inser(bp);
+      return;
+    }
+    head += 12 * WSIZE;
+    tail = head + 4 * WSIZE;
+  }
+  for (size_t i = 1024; i <= MAXSIZE; i *= 2) {
+    if (size <= i) {
+      inser(bp);
+      return;
+    }
+    head += 12 * WSIZE;
+    tail = head + 4 * WSIZE;
+  }
+  // if none of the free list fits,insert at the end
+  head -= 12 * WSIZE;
+  tail = head + 4 * WSIZE;
+  inser(bp);
 }
 
 /*
@@ -237,21 +313,21 @@ static void *coalesce(void *bp) {
   size_t next_alloc = GET_ALLOC(HDRP(NEXT_BLKP(bp)));
 
   if (prev_alloc && next_alloc) { /* Case 1 */
-    inser(bp);
+    insertAppr(bp);
     return bp;
   } else if (prev_alloc && !next_alloc) { /* Case 2 */
     remov(NEXT_BLKP(bp));
     size += GET_SIZE(HDRP(NEXT_BLKP(bp)));
     PUT(HDRP(bp), PACK(size, 0));
     PUT(FTRP(bp), PACK(size, 0));
-    inser(bp);
+    insertAppr(bp);
   } else if (!prev_alloc && next_alloc) { /* Case 3 */
     remov(PREV_BLKP(bp));
     size += GET_SIZE(HDRP(PREV_BLKP(bp)));
     PUT(FTRP(bp), PACK(size, 0));
     PUT(HDRP(PREV_BLKP(bp)), PACK(size, 0));
     bp = PREV_BLKP(bp);
-    inser(bp);
+    insertAppr(bp);
   } else { /* Case 4 */
     remov(PREV_BLKP(bp));
     remov(NEXT_BLKP(bp));
@@ -259,7 +335,7 @@ static void *coalesce(void *bp) {
     PUT(HDRP(PREV_BLKP(bp)), PACK(size, 0));
     PUT(FTRP(NEXT_BLKP(bp)), PACK(size, 0));
     bp = PREV_BLKP(bp);
-    inser(bp);
+    insertAppr(bp);
   }
   return bp;
 }
