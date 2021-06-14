@@ -1,13 +1,7 @@
 /*
  * mm-naive.c - The fastest, least memory-efficient malloc package.
  *
- * In this naive approach, a block is allocated by simply incrementing
- * the brk pointer.  A block is pure payload. There are no headers or
- * footers.  Blocks are never coalesced or reused. Realloc is
- * implemented directly using mm_malloc and mm_free.
- *
- * NOTE TO STUDENTS: Replace this header comment with your own header
- * comment that gives a high level description of your solution.
+ * Explicit free list + segregrated fits
  */
 #include "mm.h"
 
@@ -19,10 +13,6 @@
 
 #include "memlib.h"
 
-/*********************************************************
- * NOTE TO STUDENTS: Before you do anything else, please
- * provide your team information in the following struct.
- ********************************************************/
 team_t team = {
     /* Team name */
     "ateam",
@@ -71,7 +61,7 @@ static char *head;
 static char *tail;
 static void *extend_heap(size_t words);
 static void *coalesce(void *bp);
-static void place(void *bp, size_t asize);
+static void *place(void *bp, size_t asize);
 static void *find_fit(size_t asize);
 static int mm_check(void);
 static void inser(void *bp);
@@ -132,7 +122,7 @@ int mm_init(void) {
   return 0;
 }
 
-/* TODO: Extends the heap with a new free block. */
+/* Extends the heap with a new free block. */
 static void *extend_heap(size_t words) {
   char *bp;
   size_t size;
@@ -170,19 +160,17 @@ void *mm_malloc(size_t size) {
 
   /* Search the free list for a fit */
   if ((bp = find_fit(asize)) != NULL) {
-    place(bp, asize);
-    return bp;
+    return place(bp, asize);
   }
 
   /* No fit found. Get more memory and place the block */
   extendsize = MAX(asize, CHUNKSIZE);
   if ((bp = extend_heap(extendsize / WSIZE)) == NULL) return NULL;
-  place(bp, asize);
-  return bp;
+  return place(bp, asize);
 }
 
 /* allocator places the requested block and optionally splits the excess*/
-static void place(void *bp, size_t asize) {
+static void *place(void *bp, size_t asize) {
   size_t size = GET_SIZE(HDRP(bp));
   size_t remain = size - asize;
   char *pre = (char *)GET(PRED(bp));
@@ -190,17 +178,17 @@ static void place(void *bp, size_t asize) {
   if (remain >= (3 * DSIZE)) {
     PUT(HDRP(bp), PACK(asize, 1));
     PUT(FTRP(bp), PACK(asize, 1));
-    bp = NEXT_BLKP(bp);
-    PUT(HDRP(bp), PACK(remain, 0));
-    PUT(FTRP(bp), PACK(remain, 0));
+    PUT(HDRP(NEXT_BLKP(bp)), PACK(remain, 0));
+    PUT(FTRP(NEXT_BLKP(bp)), PACK(remain, 0));
     PUT(SUCC(pre), suc);
     PUT(PRED(suc), pre);
-    insertAppr(bp);
+    coalesce(NEXT_BLKP(bp));
   } else {
     PUT(HDRP(bp), PACK(size, 1));
     PUT(FTRP(bp), PACK(size, 1));
     remov(bp);
   }
+  return bp;
 }
 
 /* first fit */
@@ -290,9 +278,6 @@ static void remov(void *bp) {
   char *suc = (char *)GET(SUCC(bp));
   PUT(SUCC(pre), suc);
   PUT(PRED(suc), pre);
-  // comment these 2 lines increase kops a lot,i dont know why tho
-  // PUT(SUCC(bp), NULL);
-  // PUT(PRED(bp), NULL);
 }
 
 /*
@@ -313,7 +298,6 @@ static void *coalesce(void *bp) {
 
   if (prev_alloc && next_alloc) { /* Case 1 */
     insertAppr(bp);
-    return bp;
   } else if (prev_alloc && !next_alloc) { /* Case 2 */
     remov(NEXT_BLKP(bp));
     size += GET_SIZE(HDRP(NEXT_BLKP(bp)));
@@ -383,7 +367,7 @@ void *mm_realloc(void *ptr, size_t size) {
   return newptr;
 }
 
-/* coalesce the right piece if okay */
+/* coalesce piece if okay */
 static void *realloc_coalesce(void *bp, size_t asize) {
   size_t size = GET_SIZE(HDRP(bp));
   size_t prev_alloc = GET_ALLOC(FTRP(PREV_BLKP(bp)));
@@ -391,16 +375,14 @@ static void *realloc_coalesce(void *bp, size_t asize) {
 
   if (prev_alloc && next_alloc) { /* Case 1 */
     return bp;
-  }
-  if (prev_alloc && !next_alloc) { /* Case 2 */
+  } else if (prev_alloc && !next_alloc) { /* Case 2 */
     size += GET_SIZE(HDRP(NEXT_BLKP(bp)));
     remov(NEXT_BLKP(bp));
     if (size >= asize) {
       PUT(HDRP(bp), PACK(size, 1));
       PUT(FTRP(bp), PACK(size, 1));
     }
-  }
-  if (!prev_alloc && next_alloc) { /* Case 3 */
+  } else if (!prev_alloc && next_alloc) { /* Case 3 */
     size += GET_SIZE(HDRP(PREV_BLKP(bp)));
     if (size >= asize) {
       remov(PREV_BLKP(bp));
@@ -408,8 +390,7 @@ static void *realloc_coalesce(void *bp, size_t asize) {
       PUT(HDRP(PREV_BLKP(bp)), PACK(size, 1));
       bp = PREV_BLKP(bp);
     }
-  }
-  if (!prev_alloc && !next_alloc) { /* Case 4 */
+  } else if (!prev_alloc && !next_alloc) { /* Case 4 */
     size += GET_SIZE(HDRP(PREV_BLKP(bp))) + GET_SIZE(FTRP(NEXT_BLKP(bp)));
     if (size >= asize) {
       remov(PREV_BLKP(bp));
