@@ -78,6 +78,7 @@ static void inser(void *bp);
 static void remov(void *bp);
 static void insertAppr(void *bp);
 static void *check_list(size_t asize);
+static void *realloc_coalesce(void *bp, size_t asize);
 
 /*
  * mm_init - initialize the malloc package.
@@ -90,7 +91,7 @@ int mm_init(void) {
   root = head + WSIZE;
   for (size_t i = MINSIZE; i < 1024; i += DSIZE) {
     /* Create the initial empty heap */
-    if ((head = mem_sbrk(12 * WSIZE)) == (void *)-1) {
+    if ((head = mem_sbrk(8 * WSIZE)) == (void *)-1) {
       return -1;
     }
     head = head + WSIZE;
@@ -103,15 +104,10 @@ int mm_init(void) {
     PUT(PRED(tail), head);          /* tail pred */
     PUT(SUCC(tail), head);          /* tail succ */
     PUT(FTRP(tail), PACK(size, 1)); /* tail footer */
-    char *prol = (char *)tail + 3 * WSIZE;
-    PUT(prol, 0);                            /* Alignment padding */
-    PUT(prol + (1 * WSIZE), PACK(DSIZE, 1)); /* Prologue header */
-    PUT(prol + (2 * WSIZE), PACK(DSIZE, 1)); /* Prologue footer */
-    PUT(prol + (3 * WSIZE), PACK(0, 1));     /* Epilogue header */
   }
   for (size_t i = 1024; i <= MAXSIZE; i *= 2) {
     /* Create the initial empty heap */
-    if ((head = mem_sbrk(12 * WSIZE)) == (void *)-1) {
+    if ((head = mem_sbrk(8 * WSIZE)) == (void *)-1) {
       return -1;
     }
     head = head + WSIZE;
@@ -124,12 +120,15 @@ int mm_init(void) {
     PUT(PRED(tail), head);          /* tail pred */
     PUT(SUCC(tail), head);          /* tail succ */
     PUT(FTRP(tail), PACK(size, 1)); /* tail footer */
-    char *prol = (char *)tail + 3 * WSIZE;
-    PUT(prol, 0);                            /* Alignment padding */
-    PUT(prol + (1 * WSIZE), PACK(DSIZE, 1)); /* Prologue header */
-    PUT(prol + (2 * WSIZE), PACK(DSIZE, 1)); /* Prologue footer */
-    PUT(prol + (3 * WSIZE), PACK(0, 1));     /* Epilogue header */
   }
+  if ((head = mem_sbrk(4 * WSIZE)) == (void *)-1) {
+    return -1;
+  }
+  char *prol = (char *)tail + 3 * WSIZE;
+  PUT(prol, 0);                            /* Alignment padding */
+  PUT(prol + (1 * WSIZE), PACK(DSIZE, 1)); /* Prologue header */
+  PUT(prol + (2 * WSIZE), PACK(DSIZE, 1)); /* Prologue footer */
+  PUT(prol + (3 * WSIZE), PACK(0, 1));     /* Epilogue header */
   return 0;
 }
 
@@ -143,7 +142,6 @@ static void *extend_heap(size_t words) {
   if ((long)(bp = mem_sbrk(size)) == -1) {
     return NULL;
   }
-
   /* Initialize free block header/footer and the epilogue header */
   PUT(HDRP(bp), PACK(size, 0));         /* Free block header */
   PUT(FTRP(bp), PACK(size, 0));         /* Free block footer */
@@ -216,7 +214,7 @@ static void *find_fit(size_t asize) {
         return bp;
       }
     }
-    head += 12 * WSIZE;
+    head += 8 * WSIZE;
     tail = head + 4 * WSIZE;
   }
   for (size_t i = 1024; i <= MAXSIZE; i *= 2) {
@@ -225,7 +223,7 @@ static void *find_fit(size_t asize) {
         return bp;
       }
     }
-    head += 12 * WSIZE;
+    head += 8 * WSIZE;
     tail = head + 4 * WSIZE;
   }
   return NULL;
@@ -267,7 +265,7 @@ static void insertAppr(void *bp) {
       inser(bp);
       return;
     }
-    head += 12 * WSIZE;
+    head += 8 * WSIZE;
     tail = head + 4 * WSIZE;
   }
   for (size_t i = 1024; i <= MAXSIZE; i *= 2) {
@@ -275,11 +273,11 @@ static void insertAppr(void *bp) {
       inser(bp);
       return;
     }
-    head += 12 * WSIZE;
+    head += 8 * WSIZE;
     tail = head + 4 * WSIZE;
   }
   // if none of the free list fits,insert at the end
-  head -= 12 * WSIZE;
+  head -= 8 * WSIZE;
   tail = head + 4 * WSIZE;
   inser(bp);
 }
@@ -292,8 +290,9 @@ static void remov(void *bp) {
   char *suc = (char *)GET(SUCC(bp));
   PUT(SUCC(pre), suc);
   PUT(PRED(suc), pre);
-  PUT(SUCC(bp), NULL);
-  PUT(PRED(bp), NULL);
+  // comment these 2 lines increase kops a lot,i dont know why tho
+  // PUT(SUCC(bp), NULL);
+  // PUT(PRED(bp), NULL);
 }
 
 /*
@@ -347,14 +346,80 @@ void *mm_realloc(void *ptr, size_t size) {
   void *oldptr = ptr;
   void *newptr;
   size_t copySize;
-
-  newptr = mm_malloc(size);
-  if (newptr == NULL) return NULL;
+  size_t newSize;
+  size_t oldSize = GET_SIZE(HDRP(ptr));
   copySize = GET_SIZE(HDRP(oldptr));
   if (size < copySize) copySize = size;
-  memcpy(newptr, oldptr, copySize);
-  mm_free(oldptr);
+
+  /* Adjust block size to include overhead and alignment reqs. */
+  if (size <= DSIZE)
+    size = MINSIZE;
+  else
+    size = DSIZE * ((size + (2 * DSIZE) + (DSIZE - 1)) / DSIZE);
+
+  if (ptr == NULL) {
+    return mm_malloc(size);
+  }
+  if (size == 0) {
+    mm_free(ptr);
+    return ptr;
+  }
+  if (oldSize >= size) {
+    return ptr;
+  } else if (oldSize < size) {
+    newptr = realloc_coalesce(oldptr, size);
+    newSize = GET_SIZE(HDRP(newptr));
+    if (newSize < size) {
+      newptr = mm_malloc(size);
+      if (newptr == NULL) return NULL;
+      memmove(newptr, oldptr, copySize);
+      mm_free(oldptr);
+    } else {
+      if (newptr != oldptr) {
+        memmove(newptr, oldptr, copySize);
+      }
+    }
+  }
   return newptr;
+}
+
+/* coalesce the right piece if okay */
+static void *realloc_coalesce(void *bp, size_t asize) {
+  size_t size = GET_SIZE(HDRP(bp));
+  size_t prev_alloc = GET_ALLOC(FTRP(PREV_BLKP(bp)));
+  size_t next_alloc = GET_ALLOC(HDRP(NEXT_BLKP(bp)));
+
+  if (prev_alloc && next_alloc) { /* Case 1 */
+    return bp;
+  }
+  if (prev_alloc && !next_alloc) { /* Case 2 */
+    size += GET_SIZE(HDRP(NEXT_BLKP(bp)));
+    remov(NEXT_BLKP(bp));
+    if (size >= asize) {
+      PUT(HDRP(bp), PACK(size, 1));
+      PUT(FTRP(bp), PACK(size, 1));
+    }
+  }
+  if (!prev_alloc && next_alloc) { /* Case 3 */
+    size += GET_SIZE(HDRP(PREV_BLKP(bp)));
+    if (size >= asize) {
+      remov(PREV_BLKP(bp));
+      PUT(FTRP(bp), PACK(size, 1));
+      PUT(HDRP(PREV_BLKP(bp)), PACK(size, 1));
+      bp = PREV_BLKP(bp);
+    }
+  }
+  if (!prev_alloc && !next_alloc) { /* Case 4 */
+    size += GET_SIZE(HDRP(PREV_BLKP(bp))) + GET_SIZE(FTRP(NEXT_BLKP(bp)));
+    if (size >= asize) {
+      remov(PREV_BLKP(bp));
+      remov(NEXT_BLKP(bp));
+      PUT(HDRP(PREV_BLKP(bp)), PACK(size, 1));
+      PUT(FTRP(NEXT_BLKP(bp)), PACK(size, 1));
+      bp = PREV_BLKP(bp);
+    }
+  }
+  return bp;
 }
 
 /* Heap Consistency Checker */
