@@ -7,5 +7,5 @@
 - [x] Attack Lab
 - [x] Cache Lab
 - [x] Shell Lab
-- [ ] Malloc Lab
+- [x] Malloc Lab
 - [ ] Proxy Lab
